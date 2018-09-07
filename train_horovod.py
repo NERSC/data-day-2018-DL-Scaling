@@ -25,7 +25,8 @@ def model_fn(features, labels, params, mode):
         eval_metrics = {}
         probs = tf.nn.sigmoid(model.logits)
         predictions = tf.round(probs)
-        eval_metrics['acc'] = tf.metrics.accuracy(labels=labels, predictions=predictions)
+        acc = tf.metrics.accuracy(labels=labels, predictions=predictions)
+        eval_metrics['acc'] = acc
 
     return tf.estimator.EstimatorSpec(loss=model.loss,
                                       train_op=model.train_op,
@@ -49,11 +50,12 @@ def main(argv):
 
     # build estimator
     # Horovod: save checkpoints only on worker 0 to prevent other workers from corrupting them.
-    model_dir = params.experiment_dir if rank0 else None
+    model_dir = params.experiment_dir
 
     session_config = config_device('KNL')
     config = tf.estimator.RunConfig(session_config=session_config,
-                                    save_checkpoints_secs=200) # TOO FREQUENT, JUST FOR DEMO, use defaults instead
+                                        save_checkpoints_secs=200 if rank0 else None)
+    
     estimator = tf.estimator.Estimator(model_fn=model_fn,
                                        model_dir=model_dir,
                                        config=config,
@@ -92,6 +94,7 @@ def main(argv):
 
     # train
     tf.logging.set_verbosity(tf.logging.INFO)
+    #only do this on rank 0
     tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
 if __name__ == '__main__':
